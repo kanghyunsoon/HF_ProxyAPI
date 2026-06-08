@@ -21,7 +21,7 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 app = FastAPI(title="Ennoia Hugging Face Proxy API")
 app.mount("/outputs", StaticFiles(directory=OUTPUT_DIR), name="outputs")
 
-client = Client(SPACE_ID, hf_token=HF_TOKEN) if HF_TOKEN else Client(SPACE_ID)
+client = Client(SPACE_ID)
 
 
 class ImageRequest(BaseModel):
