@@ -4,11 +4,14 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from gradio_client import Client
 from pydantic import BaseModel, Field, model_validator
 
+
+load_dotenv()
 
 SPACE_ID = os.getenv("SPACE_ID", "mrfakename/z-image-turbo")
 HF_TOKEN = os.getenv("HF_TOKEN")
