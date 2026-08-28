@@ -1,162 +1,96 @@
-﻿# Ennoia Hugging Face Proxy API
+# HF ProxyAPI
 
-Ennoia에서 Hugging Face Gradio Space를 직접 호출하기 어렵기 때문에, 이 서버가 중간에서 이미지 생성을 완료한 뒤 깔끔한 JSON만 반환합니다.
+Ennoia가 직접 만들 수 없었던 Hugging Face Gradio 요청을 대신 처리하고, 생성 결과를 이미지 URL로 돌려주는 FastAPI 어댑터다.
 
-## 구조
+이 서버는 [Paws on Keyboard](https://github.com/kanghyunsoon/Paws-on-Keyboard)의 Painter 에이전트와 Hugging Face Space 사이에 둔 별도 배포 단위다.
 
-```text
-Ennoia -> POST /api/generate -> FastAPI Proxy -> Hugging Face Space
-Ennoia <- {"status":"success","image_url":"..."}
+## 만든 이유
+
+Ennoia 에이전트는 이미지 프롬프트를 만들 수 있었지만, 다음 처리를 코드로 구현할 수 없었다.
+
+- Gradio `/generate_image`가 요구하는 6개 인자를 순서대로 구성
+- 응답이 URL인지 로컬 파일인지 판별
+- 배열이나 중첩 객체 안에서 이미지 값 탐색
+- 로컬 결과 파일을 브라우저가 읽을 수 있는 URL로 변환
+
+이 변환을 프롬프트에 계속 포함하지 않고 HTTP 서버 경계로 분리했다.
+
+```mermaid
+flowchart LR
+    E[Ennoia Painter] -->|prompt 또는 data 배열| P[FastAPI Proxy]
+    P -->|Gradio /generate_image| H[Hugging Face Space]
+    H -->|URL·파일·중첩 결과| P
+    P -->|status · image_url| E
 ```
 
-## 로컬 실행
+## 담당한 문제와 해결
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-uvicorn main:app --reload
-```
+### 1. Ennoia 요청과 Gradio 입력이 달랐다
 
-브라우저에서 확인:
-
-```text
-http://127.0.0.1:8000/
-```
-
-테스트 요청:
-
-```powershell
-Invoke-RestMethod -Method Post `
-  -Uri "http://127.0.0.1:8000/api/generate" `
-  -ContentType "application/json" `
-  -Body '{"prompt":"a cinematic portrait photo of a silver robot, studio lighting","seed":1234}'
-```
-
-## 환경 변수
-
-이 프로젝트는 토큰을 코드에 하드코딩하지 않습니다. `main.py`는 아래처럼 환경 변수에서 값을 읽습니다.
-
-```python
-SPACE_ID = os.getenv("SPACE_ID", "mrfakename/z-image-turbo")
-HF_TOKEN = os.getenv("HF_TOKEN")
-```
-
-기본 Space ID:
-
-```text
-SPACE_ID=mrfakename/z-image-turbo
-```
-
-비공개 Hugging Face Space를 쓰거나 인증이 필요한 경우에만 `HF_TOKEN`을 설정하세요.
-
-```text
-HF_TOKEN=your_hugging_face_token
-```
-
-## 로컬 환경 변수 설정
-
-로컬에서 테스트할 때는 `.env.example`을 참고해서 `.env` 파일을 만들 수 있습니다.
-
-```powershell
-Copy-Item .env.example .env
-```
-
-그 다음 `.env`에 실제 값을 넣습니다.
-
-```text
-SPACE_ID=mrfakename/z-image-turbo
-HF_TOKEN=your_hugging_face_token
-```
-
-주의: `.env`는 `.gitignore`에 포함되어 있으므로 GitHub에 올리지 않습니다. `.env.example`에는 진짜 토큰을 넣지 마세요.
-
-## Render 배포
-
-1. GitHub에 이 프로젝트를 업로드합니다.
-2. Render에서 `New` -> `Web Service`를 선택합니다.
-3. GitHub 저장소를 연결합니다.
-4. 아래처럼 설정합니다.
-
-```text
-Runtime: Python
-Build Command: pip install -r requirements.txt
-Start Command: uvicorn main:app --host 0.0.0.0 --port $PORT
-```
-
-5. Render의 서비스 설정에서 `Environment` 탭을 엽니다.
-6. 필요한 환경 변수를 추가합니다.
-
-```text
-Key: SPACE_ID
-Value: mrfakename/z-image-turbo
-```
-
-비공개 Space나 인증이 필요한 경우에는 추가로 입력합니다.
-
-```text
-Key: HF_TOKEN
-Value: 여기에 실제 Hugging Face 토큰 입력
-```
-
-7. `Save Changes`를 누르면 Render가 다시 배포하면서 환경 변수를 서버에 주입합니다.
-
-배포 URL 예시:
-
-```text
-https://your-service-name.onrender.com
-```
-
-## Ennoia 요청 설정
-
-Method:
-
-```text
-POST
-```
-
-URL:
-
-```text
-https://your-service-name.onrender.com/api/generate
-```
-
-Headers:
-
-```text
-Content-Type: application/json
-```
-
-Body:
+단순한 객체와 Gradio 형태의 `data` 배열을 모두 받도록 Pydantic 모델에서 정규화했다.
 
 ```json
 {
-  "prompt": "your prompt here",
+  "prompt": "a dog picture diary in crayon style",
   "seed": 1234
 }
 ```
 
-또는 Hugging Face Gradio 원본 형태처럼 `data` 배열로 보낼 수 있습니다.
-
 ```json
 {
   "data": [
-    "your prompt here",
+    "a dog picture diary in crayon style",
     768,
     1024,
     8,
-    0,
+    1234,
     false
   ]
 }
 ```
 
-응답에서 사용할 값:
+두 요청은 내부에서 `prompt`, `width`, `height`, `guidance_scale`, `seed`, `randomize_seed` 여섯 값으로 맞춰진다.
 
-```text
-image_url
+### 2. Gradio 결과 형태가 고정되지 않았다
+
+`find_image_value`가 `str`, `dict`, `list`, `tuple`을 재귀 탐색한다. 객체에서는 `url`, `path`, `name`, `file`, `image` 키를 먼저 확인한다.
+
+결과가 외부 URL이면 그대로 반환하고, 로컬 파일이면 UUID 파일명으로 `outputs`에 복사해 정적 URL로 제공한다.
+
+### 3. 에이전트가 사용할 응답을 분리했다
+
+Ennoia는 응답에서 `image_url`만 사용한다.
+
+```json
+{
+  "status": "success",
+  "image_url": "https://proxy.example.com/outputs/uuid.png"
+}
 ```
 
-## 주의
+프록시는 원본 Gradio 결과도 `raw_result`에 남겨 연결 오류를 확인할 수 있게 했다.
 
-Render 무료 서버는 일정 시간 요청이 없으면 잠자기 상태가 됩니다. 첫 요청은 느릴 수 있습니다.
+## 구현 수치
+
+| 항목 | 현재 구현 |
+| --- | ---: |
+| Python 코드 | 105줄 |
+| HTTP 엔드포인트 | 2개 |
+| 지원 요청 형태 | 2개 |
+| 탐색하는 객체 키 | 5개 |
+| 필수 응답 값 | `image_url` 1개 |
+
+## 코드 시작점
+
+- 요청 정규화: `ImageRequest.normalize_gradio_data`
+- 결과 탐색: `find_image_value`
+- 로컬 파일 공개: `to_public_image_url`
+- Hugging Face 호출: `generate`
+
+## 현재 한계
+
+- Hugging Face Space의 함수명과 인자 순서가 바뀌면 프록시도 수정해야 한다.
+- 생성 파일 만료와 저장 공간 정리 작업은 구현하지 않았다.
+- 재시도, 요청 제한, 작업 큐는 없다.
+- 자동화 테스트와 응답 시간 측정 기록은 없다.
+- 현재 코드는 공개 Space 호출을 기준으로 확인했다.
