@@ -4,6 +4,15 @@ Ennoia가 직접 만들 수 없었던 Hugging Face Gradio 요청을 대신 처�
 
 이 서버는 [Paws on Keyboard](https://github.com/kanghyunsoon/Paws-on-Keyboard)의 Painter 에이전트와 Hugging Face Space 사이에 둔 별도 배포 단위다.
 
+<p>
+  <img src="https://img.shields.io/badge/Python-3776AB?style=flat-square&amp;logo=python&amp;logoColor=white" alt="Python" />
+  <img src="https://img.shields.io/badge/FastAPI-009688?style=flat-square&amp;logo=fastapi&amp;logoColor=white" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/Pydantic-E92063?style=flat-square&amp;logo=pydantic&amp;logoColor=white" alt="Pydantic" />
+  <img src="https://img.shields.io/badge/Hugging_Face-FFD21E?style=flat-square&amp;logo=huggingface&amp;logoColor=111827" alt="Hugging Face" />
+  <img src="https://img.shields.io/badge/Gradio-F97316?style=flat-square&amp;logo=gradio&amp;logoColor=white" alt="Gradio" />
+  <img src="https://img.shields.io/badge/Uvicorn-4051B5?style=flat-square" alt="Uvicorn" />
+</p>
+
 ## 만든 이유
 
 Ennoia 에이전트는 이미지 프롬프트를 만들 수 있었지만, 다음 처리를 코드로 구현할 수 없었다.
