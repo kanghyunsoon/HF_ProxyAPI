@@ -64,7 +64,9 @@ flowchart LR
 
 `find_image_value`가 `str`, `dict`, `list`, `tuple`을 재귀 탐색한다. 객체에서는 `url`, `path`, `name`, `file`, `image` 키를 먼저 확인한다.
 
-결과가 외부 URL이면 그대로 반환하고, 로컬 파일이면 UUID 파일명으로 `outputs`에 복사해 정적 URL로 제공한다.
+결과가 외부 URL이면 그대로 반환하고, 로컬 파일이면 UUID 파일명으로 `outputs`에 옮겨 정적 URL로 제공한다.
+
+로컬 파일은 `gradio_client`가 내려받는 `downloads` 폴더 안의 이미지 파일만 인정한다. 처음 구현은 응답 문자열이 서버에 있는 파일 경로이기만 하면 공개 폴더로 복사해서, 응답이 `.env`를 가리키면 토큰이 든 파일이 URL로 공개될 수 있었다.
 
 ### 3. 에이전트가 사용할 응답을 분리했다
 
@@ -79,27 +81,50 @@ Ennoia는 응답에서 `image_url`만 사용한다.
 
 프록시는 원본 Gradio 결과도 `raw_result`에 남겨 연결 오류를 확인할 수 있게 했다.
 
+### 4. 배포 환경에서 바뀌는 값을 설정으로 뺐다
+
+| 환경 변수 | 용도 | 기본값 |
+| --- | --- | --- |
+| `SPACE_ID` | 호출할 Hugging Face Space | `mrfakename/z-image-turbo` |
+| `HF_TOKEN` | 비공개 Space나 사용량 한도가 있는 Space 호출 | 없음 |
+| `PUBLIC_BASE_URL` | 리버스 프록시 뒤에서 `image_url`을 만들 공개 주소 | 요청 주소 사용 |
+| `OUTPUT_TTL_SECONDS` | `outputs`의 생성 파일을 지우기까지의 시간 | `86400` |
+| `GRADIO_DOWNLOAD_DIR` | Space 결과를 내려받는 폴더 | `downloads` |
+
+`HF_TOKEN`은 처음에 `hf_token` 인자로 넘겼는데, `gradio_client` 1.0부터 이름이 `token`으로 바뀌어 오류가 나서 한동안 전달하지 않았다. 지금은 `token`으로 넘긴다. Space 연결은 첫 요청 때 만들어서, Space가 잠시 내려가 있어도 서버는 시작된다.
+
 ## 구현 수치
 
 | 항목 | 현재 구현 |
 | --- | ---: |
-| Python 코드 | 105줄 |
+| Python 코드 (빈 줄 제외) | 164줄 |
 | HTTP 엔드포인트 | 2개 |
 | 지원 요청 형태 | 2개 |
 | 탐색하는 객체 키 | 5개 |
 | 필수 응답 값 | `image_url` 1개 |
+| 자동화 테스트 | 21개 |
 
 ## 코드 시작점
 
 - 요청 정규화: `ImageRequest.normalize_gradio_data`
 - 결과 탐색: `find_image_value`
+- 공개할 수 있는 파일 확인: `downloaded_image_path`
 - 로컬 파일 공개: `to_public_image_url`
 - Hugging Face 호출: `generate`
+
+## 테스트
+
+```text
+pip install -r requirements-dev.txt
+python -m pytest tests
+```
+
+Space 호출은 가짜 클라이언트로 바꿔서 확인한다. 서버 파일 공개 거부, 이미지 이동과 제공, 외부 URL 통과, 공개 주소 설정, Gradio 배열 순서, 문자열 `"false"` 해석, 잘못된 요청, 오래된 파일 정리, 토큰 전달을 검사한다. 실제 `mrfakename/z-image-turbo` Space로도 한 번 생성해 이미지가 `outputs`로 옮겨져 제공되는 것을 확인했다.
 
 ## 현재 한계
 
 - Hugging Face Space의 함수명과 인자 순서가 바뀌면 프록시도 수정해야 한다.
-- 생성 파일 만료와 저장 공간 정리 작업은 구현하지 않았다.
+- 생성 파일은 요청이 들어올 때 오래된 것부터 지운다. 요청이 없으면 정리하지 않는다.
 - 재시도, 요청 제한, 작업 큐는 없다.
-- 자동화 테스트와 응답 시간 측정 기록은 없다.
-- 현재 코드는 공개 Space 호출을 기준으로 확인했다.
+- Space 오류도 HTTP 200에 `status: error`로 돌려준다. Ennoia 연결이 이 형식을 쓰고 있어 바꾸지 않았다.
+- 응답 시간 측정 기록은 없다. 비공개 Space 호출은 확인하지 않았다.
